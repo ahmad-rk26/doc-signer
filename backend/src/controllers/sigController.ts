@@ -48,7 +48,7 @@ export const shareSigningLink = async (req: AuthRequest, res: Response) => {
 
         if (error) throw error;
 
-        const link = `${process.env.FRONTEND_URL}/sign/${token}`;
+        const link = `${process.env.FRONTEND_URL || process.env.FRONTEND_URL_PRODUCTION || 'http://localhost:3000'}/sign/${token}`;
 
         // Try to send email, but don't fail if email service is not configured
         try {
@@ -57,6 +57,7 @@ export const shareSigningLink = async (req: AuthRequest, res: Response) => {
                 "Document Signature Request",
                 `Please sign the document:\n${link}`
             );
+            console.log(`✅ Email sent successfully to ${recipientEmail}`);
             res.json({ message: "Signing link sent via email", link });
         } catch (emailError: any) {
             console.warn("Email sending failed:", emailError.message);
@@ -406,15 +407,20 @@ export const resendSigningLink = async (req: AuthRequest, res: Response) => {
             return res.status(403).json({ error: "Forbidden" });
         }
 
-        const link = `${process.env.FRONTEND_URL}/sign/${token}`;
+        const link = `${process.env.FRONTEND_URL || process.env.FRONTEND_URL_PRODUCTION || 'http://localhost:3000'}/sign/${token}`;
 
-        await sendEmail(
-            session.recipient_email,
-            "Document Signature Request (Reminder)",
-            `Please sign the document:\n${link}`
-        );
-
-        res.json({ message: "Signing link resent successfully" });
+        try {
+            await sendEmail(
+                session.recipient_email,
+                "Document Signature Request (Reminder)",
+                `Please sign the document:\n${link}`
+            );
+            console.log(`✅ Reminder email sent to ${session.recipient_email}`);
+            res.json({ message: "Signing link resent successfully" });
+        } catch (emailError: any) {
+            console.error("Failed to resend email:", emailError.message);
+            res.status(500).json({ error: "Failed to send email" });
+        }
     } catch (err: any) {
         res.status(500).json({ error: err.message });
     }
@@ -468,7 +474,7 @@ export const bulkShareSigningLinks = async (req: AuthRequest, res: Response) => 
                     continue;
                 }
 
-                const link = `${process.env.FRONTEND_URL}/sign/${token}`;
+                const link = `${process.env.FRONTEND_URL || process.env.FRONTEND_URL_PRODUCTION || 'http://localhost:3000'}/sign/${token}`;
 
                 try {
                     await sendEmail(
