@@ -50,24 +50,24 @@ export const shareSigningLink = async (req: AuthRequest, res: Response) => {
 
         const link = `${process.env.FRONTEND_URL || process.env.FRONTEND_URL_PRODUCTION || 'http://localhost:3000'}/sign/${token}`;
 
-        // Try to send email, but don't fail if email service is not configured
-        try {
-            await sendEmail(
-                recipientEmail,
-                "Document Signature Request",
-                `Please sign the document:\n${link}`
-            );
-            console.log(`✅ Email sent successfully to ${recipientEmail}`);
-            res.json({ message: "Signing link sent via email", link });
-        } catch (emailError: any) {
-            console.warn("Email sending failed:", emailError.message);
-            // Return success with link even if email fails
-            res.json({
-                message: "Signing link created (email not sent - please configure email service)",
-                link,
-                warning: "Email service not configured"
-            });
-        }
+        // Send response immediately, then send email asynchronously
+        res.json({
+            message: "Signing link created",
+            link,
+            status: "pending_email"
+        });
+
+        // Send email asynchronously (don't await)
+        sendEmail(
+            recipientEmail,
+            "Document Signature Request",
+            `Please sign the document:\n${link}`
+        ).then(() => {
+            console.log(`Email sent successfully to ${recipientEmail}`);
+        }).catch((emailError: any) => {
+            console.warn(`Email sending failed for ${recipientEmail}:`, emailError.message);
+        });
+
     } catch (err: any) {
         console.error("Share signing link error:", err);
         res.status(500).json({ error: err.message });
@@ -455,6 +455,7 @@ export const bulkShareSigningLinks = async (req: AuthRequest, res: Response) => 
         const sessions = [];
         const errors = [];
 
+        // Create all sessions first
         for (const email of recipients) {
             try {
                 const token = uuidv4();
@@ -475,33 +476,35 @@ export const bulkShareSigningLinks = async (req: AuthRequest, res: Response) => 
                 }
 
                 const link = `${process.env.FRONTEND_URL || process.env.FRONTEND_URL_PRODUCTION || 'http://localhost:3000'}/sign/${token}`;
-
-                try {
-                    await sendEmail(
-                        email,
-                        "Document Signature Request",
-                        `Please sign the document:\n${link}`
-                    );
-                    console.log(`Email sent to ${email}`);
-                    sessions.push({ email, token, link });
-                } catch (emailError: any) {
-                    console.error(`Failed to send email to ${email}:`, emailError.message);
-                    // Still add to sessions even if email fails
-                    sessions.push({ email, token, link, emailFailed: true });
-                }
+                sessions.push({ email, token, link });
             } catch (err: any) {
                 console.error(`Error processing ${email}:`, err);
                 errors.push({ email, error: err.message });
             }
         }
 
-        console.log(`Bulk share complete: ${sessions.length} sessions created, ${errors.length} errors`);
+        console.log(`Bulk share: ${sessions.length} sessions created, ${errors.length} errors`);
 
+        // Send response immediately
         res.json({
-            message: `Signing links sent to ${sessions.length} recipients`,
+            message: `Signing links created for ${sessions.length} recipients`,
             sessions,
             errors: errors.length > 0 ? errors : undefined
         });
+
+        // Send emails asynchronously (don't await)
+        sessions.forEach(({ email, link }) => {
+            sendEmail(
+                email,
+                "Document Signature Request",
+                `Please sign the document:\n${link}`
+            ).then(() => {
+                console.log(`✅ Email sent to ${email}`);
+            }).catch((emailError: any) => {
+                console.error(`❌ Failed to send email to ${email}:`, emailError.message);
+            });
+        });
+
     } catch (err: any) {
         console.error("Bulk share error:", err);
         res.status(500).json({ error: err.message });

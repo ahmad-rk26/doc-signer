@@ -161,17 +161,30 @@ export default function DocumentPage() {
 
         try {
             toast.loading("Sending...", { id: "share" });
-            await api.post("/api/share", {
+
+            const response = await api.post("/api/share", {
                 documentId: id,
                 recipientEmail,
+            }, {
+                timeout: 30000 // 30 second timeout
             });
 
-            toast.success("Signing link sent", { id: "share" });
+            console.log("Share response:", response.data);
+
+            if (response.data.warning) {
+                toast.success(response.data.message, { id: "share" });
+                toast.error(response.data.warning, { duration: 5000 });
+            } else {
+                toast.success("Signing link sent", { id: "share" });
+            }
+
             setRecipientEmail("");
             setShowShareModal(false);
             await loadSessions();
-        } catch {
-            toast.error("Failed to send", { id: "share" });
+        } catch (err: any) {
+            console.error("Share error:", err);
+            const errorMsg = err?.response?.data?.error || err?.message || "Failed to send";
+            toast.error(errorMsg, { id: "share" });
         }
     };
 
@@ -188,17 +201,33 @@ export default function DocumentPage() {
 
         try {
             toast.loading("Sending to multiple recipients...", { id: "bulk" });
-            await api.post("/api/share/bulk", {
+
+            const response = await api.post("/api/share/bulk", {
                 documentId: id,
                 recipients: emails,
+            }, {
+                timeout: 60000 // 60 second timeout for bulk
             });
 
-            toast.success(`Sent to ${emails.length} recipients`, { id: "bulk" });
+            console.log("Bulk share response:", response.data);
+
+            const successCount = response.data.sessions?.length || 0;
+            const failCount = response.data.errors?.length || 0;
+
+            if (failCount > 0) {
+                toast.success(`Sent to ${successCount} recipients`, { id: "bulk" });
+                toast.error(`Failed for ${failCount} recipients`, { duration: 5000 });
+            } else {
+                toast.success(`Sent to ${successCount} recipients`, { id: "bulk" });
+            }
+
             setBulkEmails("");
             setShowShareModal(false);
             await loadSessions();
-        } catch {
-            toast.error("Failed to send", { id: "bulk" });
+        } catch (err: any) {
+            console.error("Bulk share error:", err);
+            const errorMsg = err?.response?.data?.error || err?.message || "Failed to send";
+            toast.error(errorMsg, { id: "bulk" });
         }
     };
 
@@ -446,7 +475,7 @@ export default function DocumentPage() {
 
                 {/* Share Modal */}
                 {showShareModal && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center z-50 p-4">
                         <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
                             <div className="flex items-center gap-3 mb-6">
                                 <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
