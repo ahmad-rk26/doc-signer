@@ -1,0 +1,18 @@
+# node modules
+node_modules
+**/node_modules
+
+# next build
+frontend/.next
+
+# env files
+.env
+.env.local
+backend/.env
+frontend/.env.local
+
+# logs
+npm-debug.log*
+
+# build output
+backend/dist
