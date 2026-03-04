@@ -3,8 +3,11 @@ import { supabase } from "./supabaseClient";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL;
 
+console.log('API URL:', API);
+
 export const api = axios.create({
     baseURL: API,
+    withCredentials: true,
 });
 
 // Response interceptor to handle 401 errors globally
