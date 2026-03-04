@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+body {
+    background: linear-gradient(to bottom, #f9fafb, #f3f4f6);
+}
+
+@layer utilities {
+    .container-max {
+        @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+    }
+}
+
+.input {
+    @apply w-full px-4 py-3 rounded-xl border border-gray-300 bg-white/80 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition shadow-sm;
+}
+
+.error {
+    @apply text-red-500 text-sm mt-1;
+}
+
+.btn-primary {
+    @apply w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 transition shadow-lg hover:shadow-xl disabled:opacity-50;
+}
