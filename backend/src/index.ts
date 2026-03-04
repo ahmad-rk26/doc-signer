@@ -34,6 +34,9 @@ app.use(cors({
 
 app.use(express.json());
 
+app.get("/", (_, res) => {
+    res.send("API Running");
+});
 
 app.use('/api/docs', docRoutes);
 app.use('/api', sigRoutes);
