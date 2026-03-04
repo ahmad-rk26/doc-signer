@@ -21,11 +21,16 @@ app.use(cors({
         if (!origin) return callback(null, true);
 
         if (allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            console.warn(`CORS blocked origin: ${origin}`);
-            callback(null, false);
+            return callback(null, true);
         }
+
+        // Allow all Vercel preview deployments (*.vercel.app)
+        if (origin.endsWith('.vercel.app')) {
+            return callback(null, true);
+        }
+
+        console.warn(`CORS blocked origin: ${origin}`);
+        callback(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
