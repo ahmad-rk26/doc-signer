@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/app/lib/api";
 import PDFViewer from "@/app/components/PDFViewer";
-import SignaturePlacer from "@/app/components/SignaturePlacer";
+import ResizableSignaturePlacer from "@/app/components/ResizableSignaturePlacer";
 import SignaturePad from "@/app/components/SignaturePad";
 import toast from "react-hot-toast";
 import { DndContext, DragEndEvent } from "@dnd-kit/core";
@@ -35,6 +35,8 @@ export default function SignDocumentPage() {
         x: 180,
         y: 120,
         page: 1,
+        width: 160,
+        height: 60,
     });
 
     useEffect(() => {
@@ -55,8 +57,18 @@ export default function SignDocumentPage() {
                 }
 
                 if (statusRes.data.documentStatus === "signed") {
-                    toast.error("This document has already been signed");
+                    toast.error("This document has already been signed by all recipients");
                     setSigned(true);
+                    setLoading(false);
+                    return;
+                }
+
+                // Check if this specific session is already completed
+                if (statusRes.data.sessionStatus === "completed") {
+                    toast.error("You have already signed this document");
+                    setSigned(true);
+                    setLoading(false);
+                    return;
                 }
 
                 const docRes = await api.get(
@@ -93,6 +105,14 @@ export default function SignDocumentPage() {
         }));
     };
 
+    const handleResize = (width: number, height: number) => {
+        setSignaturePos((prev) => ({
+            ...prev,
+            width,
+            height,
+        }));
+    };
+
     const saveSignature = async () => {
         try {
             if (!signatureImage) {
@@ -112,8 +132,6 @@ export default function SignDocumentPage() {
                     token,
                     ...signaturePos,
                     signaturePath: upload.data.path,
-                    width: 160,
-                    height: 60,
                 }
             );
 
@@ -140,10 +158,10 @@ export default function SignDocumentPage() {
 
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+            <div className="pt-24 min-h-screen flex items-center justify-center">
                 <div className="text-center">
-                    <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-300 border-t-indigo-600 mx-auto mb-3"></div>
-                    <p className="text-sm text-gray-500">Loading document...</p>
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading document...</p>
                 </div>
             </div>
         );
@@ -151,18 +169,15 @@ export default function SignDocumentPage() {
 
     if (sessionStatus?.expired) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+            <div className="pt-24 min-h-screen flex items-center justify-center">
                 <div className="text-center max-w-md">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-amber-100 flex items-center justify-center">
-                        <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                    </div>
-                    <h1 className="text-xl font-semibold text-gray-900 mb-2">
+                    <div className="text-6xl mb-4">⏰</div>
+                    <h1 className="text-2xl font-bold text-gray-800 mb-2">
                         Link Expired
                     </h1>
-                    <p className="text-sm text-gray-600">
-                        This signing link has expired. Please contact the document owner to request a new link.
+                    <p className="text-gray-600">
+                        This signing link has expired. Please contact the document
+                        owner to request a new link.
                     </p>
                 </div>
             </div>
@@ -171,18 +186,15 @@ export default function SignDocumentPage() {
 
     if (signed) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+            <div className="pt-24 min-h-screen flex items-center justify-center">
                 <div className="text-center max-w-md">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
-                        <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                    </div>
-                    <h1 className="text-xl font-semibold text-gray-900 mb-2">
+                    <div className="text-6xl mb-4">✅</div>
+                    <h1 className="text-2xl font-bold text-gray-800 mb-2">
                         Document Signed
                     </h1>
-                    <p className="text-sm text-gray-600">
-                        This document has been successfully signed. The signed PDF has been downloaded to your device.
+                    <p className="text-gray-600">
+                        This document has been successfully signed. The signed PDF
+                        has been downloaded to your device.
                     </p>
                 </div>
             </div>
@@ -191,17 +203,13 @@ export default function SignDocumentPage() {
 
     if (!fileUrl) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+            <div className="pt-24 min-h-screen flex items-center justify-center">
                 <div className="text-center max-w-md">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
-                        <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </div>
-                    <h1 className="text-xl font-semibold text-gray-900 mb-2">
+                    <div className="text-6xl mb-4">❌</div>
+                    <h1 className="text-2xl font-bold text-gray-800 mb-2">
                         Invalid Link
                     </h1>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-gray-600">
                         This signing link is invalid or has been revoked.
                     </p>
                 </div>
@@ -210,73 +218,51 @@ export default function SignDocumentPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            {/* Header */}
-            <div className="bg-white border-b border-gray-200 sticky top-0 z-20">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        <div>
-                            <h1 className="text-lg sm:text-xl font-semibold text-gray-900">Sign Document</h1>
-                            {sessionStatus && (
-                                <div className="text-xs sm:text-sm text-gray-500 mt-1">
-                                    <span className="inline-block">{sessionStatus.recipientEmail}</span>
-                                    <span className="mx-2 hidden sm:inline">•</span>
-                                    <span className="inline-block sm:inline">
-                                        Expires {new Date(sessionStatus.expiresAt).toLocaleDateString()}
-                                    </span>
-                                </div>
-                            )}
+        <div className="pt-20 min-h-screen bg-gray-50">
+            <div className="max-w-6xl mx-auto px-4 py-10">
+                <div className="mb-8">
+                    <h1 className="text-3xl font-bold mb-2">Sign Document</h1>
+                    {sessionStatus && (
+                        <div className="text-sm text-gray-600">
+                            <p>Recipient: {sessionStatus.recipientEmail}</p>
+                            <p>
+                                Expires:{" "}
+                                {new Date(sessionStatus.expiresAt).toLocaleDateString()}
+                            </p>
                         </div>
-                        <button
-                            onClick={saveSignature}
-                            className="w-full sm:w-auto px-6 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
-                        >
-                            Sign & Download
-                        </button>
-                    </div>
+                    )}
                 </div>
-            </div>
 
-            {/* Main Content */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* PDF Viewer - Takes 2 columns on large screens */}
-                    <div className="lg:col-span-2">
-                        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
-                            <DndContext onDragEnd={handleDragEnd}>
-                                <PDFViewer fileUrl={fileUrl}>
-                                    <SignaturePlacer {...signaturePos} />
-                                </PDFViewer>
-                            </DndContext>
-                        </div>
-                    </div>
+                <DndContext onDragEnd={handleDragEnd}>
+                    <PDFViewer fileUrl={fileUrl}>
+                        <ResizableSignaturePlacer
+                            {...signaturePos}
+                            onResize={handleResize}
+                        />
+                    </PDFViewer>
+                </DndContext>
 
-                    {/* Signature Panel - Takes 1 column on large screens */}
-                    <div className="lg:col-span-1">
-                        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 sticky top-24">
-                            <h2 className="text-base font-semibold text-gray-900 mb-4">Your Signature</h2>
-                            <SignaturePad onSave={setSignatureImage} />
+                <div className="mt-10">
+                    <SignaturePad onSave={setSignatureImage} />
 
-                            {/* Instructions */}
-                            <div className="mt-6 pt-6 border-t border-gray-200">
-                                <h3 className="text-sm font-medium text-gray-900 mb-3">How to sign</h3>
-                                <ol className="space-y-2 text-xs text-gray-600">
-                                    <li className="flex items-start gap-2">
-                                        <span className="flex-shrink-0 w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-medium">1</span>
-                                        <span>Draw or upload your signature</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="flex-shrink-0 w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-medium">2</span>
-                                        <span>Drag the signature box to position it</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="flex-shrink-0 w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-medium">3</span>
-                                        <span>Click "Sign & Download"</span>
-                                    </li>
-                                </ol>
-                            </div>
-                        </div>
-                    </div>
+                    <button
+                        onClick={saveSignature}
+                        className="mt-4 px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                    >
+                        Sign & Download Document
+                    </button>
+                </div>
+
+                <div className="mt-8 p-4 bg-blue-50 rounded-lg">
+                    <h3 className="font-semibold text-blue-900 mb-2">
+                        How to sign:
+                    </h3>
+                    <ol className="list-decimal list-inside text-sm text-blue-800 space-y-1">
+                        <li>Draw your signature or upload an image</li>
+                        <li>Drag the signature to position it on the document</li>
+                        <li>Click "Sign & Download Document"</li>
+                        <li>The signed PDF will download automatically</li>
+                    </ol>
                 </div>
             </div>
         </div>

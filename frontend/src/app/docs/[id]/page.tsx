@@ -6,7 +6,7 @@ import { useAuth } from "@/app/hooks/useAuth";
 import { api, attachToken } from "@/app/lib/api";
 
 import PDFViewer from "@/app/components/PDFViewer";
-import SignaturePlacer from "@/app/components/SignaturePlacer";
+import ResizableSignaturePlacer from "@/app/components/ResizableSignaturePlacer";
 import SignaturePad from "@/app/components/SignaturePad";
 import AuditLog from "@/app/components/AuditLog";
 
@@ -39,11 +39,14 @@ export default function DocumentPage() {
     const [bulkEmails, setBulkEmails] = useState("");
     const [auditRefresh, setAuditRefresh] = useState(0);
     const [pdfNumPages, setPdfNumPages] = useState(1);
+    const [lastUpdateTime, setLastUpdateTime] = useState<string | null>(null);
 
     const [signaturePos, setSignaturePos] = useState({
         x: 180,
         y: 120,
         page: 1,
+        width: 160,
+        height: 60,
     });
 
     useEffect(() => {
@@ -68,6 +71,11 @@ export default function DocumentPage() {
             const docRes = await api.get(`/api/docs/${id}`);
             setDoc(docRes.data);
 
+            // Track last update time
+            if (docRes.data.updated_at) {
+                setLastUpdateTime(docRes.data.updated_at);
+            }
+
             const encoded = encodeURIComponent(docRes.data.file_path);
 
             const urlRes = await api.get(
@@ -86,6 +94,51 @@ export default function DocumentPage() {
         loadSessions();
     }, [loadDocument, loadSessions]);
 
+    // Smart polling: Check for updates only when document might have changed
+    useEffect(() => {
+        if (!id || !token) return;
+
+        console.log('🔄 Smart polling started for document:', id);
+
+        // Check for updates every 5 seconds
+        const checkForUpdates = async () => {
+            try {
+                // Quick check: only fetch document metadata to see if updated_at changed
+                const res = await api.get(`/api/docs/${id}`);
+
+                console.log('⏰ Polling check - Current:', res.data.updated_at, 'Last:', lastUpdateTime);
+
+                // If document was updated since last check, refresh all data
+                if (res.data.updated_at && res.data.updated_at !== lastUpdateTime) {
+                    console.log('📬 Document updated! Refreshing data...');
+
+                    // Update the last update time first
+                    setLastUpdateTime(res.data.updated_at);
+
+                    // Then refresh all data
+                    await loadDocument();
+                    await loadSessions();
+                    setAuditRefresh(prev => prev + 1);
+
+                    // Show notification
+                    toast.success('Document status updated!', {
+                        icon: '🔄',
+                        duration: 3000
+                    });
+                }
+            } catch (err) {
+                console.error('❌ Update check failed:', err);
+            }
+        };
+
+        const interval = setInterval(checkForUpdates, 5000); // Check every 5 seconds
+
+        return () => {
+            console.log('🛑 Smart polling stopped');
+            clearInterval(interval);
+        };
+    }, [id, token, lastUpdateTime, loadDocument, loadSessions]);
+
     const handleDragEnd = (event: DragEndEvent) => {
         const { delta } = event;
 
@@ -93,6 +146,14 @@ export default function DocumentPage() {
             ...prev,
             x: prev.x + delta.x,
             y: prev.y + delta.y,
+        }));
+    };
+
+    const handleResize = (width: number, height: number) => {
+        setSignaturePos((prev) => ({
+            ...prev,
+            width,
+            height,
         }));
     };
 
@@ -389,7 +450,10 @@ export default function DocumentPage() {
                             currentPage={signaturePos.page}
                             onLoadSuccess={(numPages) => setPdfNumPages(numPages)}
                         >
-                            <SignaturePlacer {...signaturePos} />
+                            <ResizableSignaturePlacer
+                                {...signaturePos}
+                                onResize={handleResize}
+                            />
                         </PDFViewer>
                     </DndContext>
                 </div>
@@ -413,7 +477,32 @@ export default function DocumentPage() {
                 {/* Signing Sessions */}
                 {sessions.length > 0 && (
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8">
-                        <h2 className="text-lg font-semibold text-gray-900 mb-4">Signing Sessions</h2>
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-lg font-semibold text-gray-900">Signing Sessions</h2>
+                            <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-lg border border-blue-200">
+                                    <svg className="w-4 h-4 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
+                                        <circle cx="10" cy="10" r="3" />
+                                    </svg>
+                                    <span className="font-medium">Live Updates (5s)</span>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        console.log('🔄 Manual refresh triggered');
+                                        loadSessions();
+                                        loadDocument();
+                                        setAuditRefresh(prev => prev + 1);
+                                        toast.success('Refreshed!');
+                                    }}
+                                    className="flex items-center gap-2 px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                    Refresh Status
+                                </button>
+                            </div>
+                        </div>
                         <div className="space-y-3">
                             {sessions.map((session) => (
                                 <div
@@ -469,73 +558,76 @@ export default function DocumentPage() {
                             ))}
                         </div>
                     </div>
-                )}
+                )
+                }
 
                 <AuditLog docId={id} refreshTrigger={auditRefresh} />
 
                 {/* Share Modal */}
-                {showShareModal && (
-                    <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center z-50 p-4">
-                        <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-                                    <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                                    </svg>
+                {
+                    showShareModal && (
+                        <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                                        <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                                        </svg>
+                                    </div>
+                                    <h2 className="text-xl font-bold text-gray-900">
+                                        Share for Signing
+                                    </h2>
                                 </div>
-                                <h2 className="text-xl font-bold text-gray-900">
-                                    Share for Signing
-                                </h2>
-                            </div>
 
-                            <div className="mb-6">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Single Recipient
-                                </label>
-                                <input
-                                    type="email"
-                                    placeholder="recipient@example.com"
-                                    value={recipientEmail}
-                                    onChange={(e) => setRecipientEmail(e.target.value)}
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                />
+                                <div className="mb-6">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Single Recipient
+                                    </label>
+                                    <input
+                                        type="email"
+                                        placeholder="recipient@example.com"
+                                        value={recipientEmail}
+                                        onChange={(e) => setRecipientEmail(e.target.value)}
+                                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                    />
+                                    <button
+                                        onClick={handleShare}
+                                        className="w-full mt-3 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium"
+                                    >
+                                        Send Link
+                                    </button>
+                                </div>
+
+                                <div className="border-t pt-6">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Multiple Recipients (comma-separated)
+                                    </label>
+                                    <textarea
+                                        placeholder="email1@example.com, email2@example.com"
+                                        value={bulkEmails}
+                                        onChange={(e) => setBulkEmails(e.target.value)}
+                                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                        rows={3}
+                                    />
+                                    <button
+                                        onClick={handleBulkShare}
+                                        className="w-full mt-3 px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium"
+                                    >
+                                        Send to Multiple
+                                    </button>
+                                </div>
+
                                 <button
-                                    onClick={handleShare}
-                                    className="w-full mt-3 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium"
+                                    onClick={() => setShowShareModal(false)}
+                                    className="w-full mt-6 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium"
                                 >
-                                    Send Link
+                                    Close
                                 </button>
                             </div>
-
-                            <div className="border-t pt-6">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Multiple Recipients (comma-separated)
-                                </label>
-                                <textarea
-                                    placeholder="email1@example.com, email2@example.com"
-                                    value={bulkEmails}
-                                    onChange={(e) => setBulkEmails(e.target.value)}
-                                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                    rows={3}
-                                />
-                                <button
-                                    onClick={handleBulkShare}
-                                    className="w-full mt-3 px-4 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium"
-                                >
-                                    Send to Multiple
-                                </button>
-                            </div>
-
-                            <button
-                                onClick={() => setShowShareModal(false)}
-                                className="w-full mt-6 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium"
-                            >
-                                Close
-                            </button>
                         </div>
-                    </div>
-                )}
-            </div>
-        </div>
+                    )
+                }
+            </div >
+        </div >
     );
 }

@@ -1,35 +1,42 @@
-import { Resend } from 'resend';
+import { BrevoClient } from '@getbrevo/brevo';
 
 /* =====================================================
    EMAIL SERVICE CONFIGURATION
    
-   Using Resend instead of Gmail SMTP because:
-   - Render blocks outgoing SMTP connections (port 587/465)
-   - Resend uses HTTPS API (no port blocking issues)
-   - Free tier: 3,000 emails/month
-   - Better deliverability
+   Using Brevo (formerly Sendinblue) because:
+   - Free tier: 300 emails/day (no domain verification needed!)
+   - Works with Render (uses HTTPS API, not SMTP)
+   - No credit card required
+   - Can send to any email address immediately
 ===================================================== */
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let brevoClient: BrevoClient | null = null;
 
-/* =====================================================
-   VERIFY EMAIL CONFIGURATION (runs once on startup)
-===================================================== */
-
-(async () => {
-    if (!process.env.RESEND_API_KEY) {
-        console.error("⚠️ RESEND_API_KEY not set in environment variables");
+const initializeBrevo = () => {
+    if (!process.env.BREVO_API_KEY) {
+        console.error("⚠️ BREVO_API_KEY not set in environment variables");
         console.error("Email functionality will not work!");
         console.error("\n📝 Setup instructions:");
-        console.error("1. Sign up at https://resend.com");
-        console.error("2. Get your API key from https://resend.com/api-keys");
-        console.error("3. Add RESEND_API_KEY to your .env file");
-        console.error("4. Verify your domain or use onboarding@resend.dev for testing\n");
-    } else {
-        console.log("✅ Resend email service configured");
-        console.log("📧 API Key:", process.env.RESEND_API_KEY.substring(0, 10) + "...");
+        console.error("1. Sign up at https://app.brevo.com/account/register");
+        console.error("2. Go to https://app.brevo.com/settings/keys/api");
+        console.error("3. Copy your API key");
+        console.error("4. Add BREVO_API_KEY to your .env file\n");
+        return null;
     }
-})();
+
+    const client = new BrevoClient({
+        apiKey: process.env.BREVO_API_KEY
+    });
+
+    console.log("✅ Brevo email service configured");
+    console.log("📧 API Key:", process.env.BREVO_API_KEY.substring(0, 15) + "...");
+    console.log("📬 Free tier: 300 emails/day");
+
+    return client;
+};
+
+// Initialize on startup
+brevoClient = initializeBrevo();
 
 /* =====================================================
    SEND EMAIL FUNCTION
@@ -41,21 +48,26 @@ export const sendEmail = async (
     text: string
 ) => {
     try {
-        console.log(`� Attempting to send email to: ${to}`);
+        console.log(`📤 Attempting to send email to: ${to}`);
         console.log(`📧 Subject: ${subject}`);
 
-        if (!process.env.RESEND_API_KEY) {
-            throw new Error("RESEND_API_KEY not configured");
+        if (!brevoClient) {
+            throw new Error("Brevo API not configured. Please set BREVO_API_KEY.");
         }
 
         // Extract signing link from last line
         const signLink = text.split("\n").pop() || "";
 
-        const { data, error } = await resend.emails.send({
-            from: process.env.EMAIL_FROM || 'DoSign <onboarding@resend.dev>',
-            to: [to],
-            subject,
-            html: `
+        const senderEmail = process.env.BREVO_SENDER_EMAIL || "mdahmadrazakhan751@gmail.com";
+
+        const response = await brevoClient.transactionalEmails.sendTransacEmail({
+            sender: {
+                name: "DoSign",
+                email: senderEmail
+            },
+            to: [{ email: to }],
+            subject: subject,
+            htmlContent: `
                 <div style="font-family: Arial, sans-serif; max-width:600px;margin:auto;padding:20px;">
                   
                   <div style="background:linear-gradient(135deg,#667eea,#764ba2);
@@ -95,25 +107,25 @@ export const sendEmail = async (
                     </p>
                   </div>
                 </div>
-            `,
+            `
         });
 
-        if (error) {
-            throw error;
-        }
-
         console.log("✅ Email sent successfully");
-        console.log("📬 Email ID:", data?.id);
+        console.log("📬 Message ID:", response.messageId);
 
-        return data;
+        return response;
     } catch (error: any) {
         console.error("❌ Email sending failed");
         console.error("📧 Recipient:", to);
         console.error("🔴 Error:", error.message || error);
 
-        if (error.message?.includes("API key")) {
-            console.error("\n⚠️ Invalid or missing Resend API key");
-            console.error("Get your API key at: https://resend.com/api-keys\n");
+        if (error.body) {
+            console.error("🔴 Error body:", JSON.stringify(error.body, null, 2));
+        }
+
+        if (error.statusCode === 401 || error.message?.includes("API key") || error.message?.includes("Unauthorized")) {
+            console.error("\n⚠️ Invalid or missing Brevo API key");
+            console.error("Get your API key at: https://app.brevo.com/settings/keys/api\n");
         }
 
         throw new Error(`Email sending failed: ${error.message || error}`);

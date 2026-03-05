@@ -21,21 +21,23 @@ export default function AuditLog({ docId, refreshTrigger }: AuditLogProps) {
     const { token } = useAuth();
     const [logs, setLogs] = useState<AuditEntry[]>([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+
+    const loadAuditLogs = async () => {
+        try {
+            setRefreshing(true);
+            const res = await api.get(`/api/audit/${docId}`);
+            setLogs(res.data);
+        } catch (err) {
+            console.error("Failed to load audit logs");
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    };
 
     useEffect(() => {
         if (!token || !docId) return;
-
-        const loadAuditLogs = async () => {
-            try {
-                const res = await api.get(`/api/audit/${docId}`);
-                setLogs(res.data);
-            } catch (err) {
-                console.error("Failed to load audit logs");
-            } finally {
-                setLoading(false);
-            }
-        };
-
         loadAuditLogs();
     }, [docId, token, refreshTrigger]);
 
@@ -51,7 +53,19 @@ export default function AuditLog({ docId, refreshTrigger }: AuditLogProps) {
     if (!logs.length) {
         return (
             <div className="mt-10 bg-white rounded-lg shadow p-6">
-                <h2 className="text-xl font-bold mb-4">Audit Trail</h2>
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-bold">Audit Trail</h2>
+                    <button
+                        onClick={loadAuditLogs}
+                        disabled={refreshing}
+                        className="flex items-center gap-2 px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg transition disabled:opacity-50"
+                    >
+                        <svg className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Refresh
+                    </button>
+                </div>
                 <p className="text-gray-500">No audit entries yet.</p>
             </div>
         );
@@ -59,7 +73,19 @@ export default function AuditLog({ docId, refreshTrigger }: AuditLogProps) {
 
     return (
         <div className="mt-10 bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-bold mb-4">Audit Trail</h2>
+            <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold">Audit Trail</h2>
+                <button
+                    onClick={loadAuditLogs}
+                    disabled={refreshing}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50 rounded-lg transition disabled:opacity-50"
+                >
+                    <svg className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Refresh
+                </button>
+            </div>
             <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">

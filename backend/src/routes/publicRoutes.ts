@@ -12,12 +12,16 @@ router.get("/docs/:token", async (req: Request, res: Response) => {
 
         const { data: session, error: sessionError } = await supabaseAdmin
             .from("signing_sessions")
-            .select("document_id, recipient_email, expires_at")
+            .select("document_id, recipient_email, expires_at, status")
             .eq("token", token)
             .single();
 
         if (sessionError || !session)
             return res.status(404).json({ error: "Invalid or expired token" });
+
+        // Check if already completed (one-time use)
+        if (session.status === "completed")
+            return res.status(410).json({ error: "This signing link has already been used and is no longer accessible" });
 
         if (new Date(session.expires_at) < new Date())
             return res.status(410).json({ error: "Token expired" });
@@ -168,16 +172,17 @@ router.post("/sign", async (req: Request, res: Response) => {
 
         console.log("Signature inserted");
 
-        // Mark the signing session as completed
+        // Mark the signing session as completed and expire the token
         await supabaseAdmin
             .from("signing_sessions")
             .update({
                 status: "completed",
-                signed_at: new Date().toISOString()
+                signed_at: new Date().toISOString(),
+                expires_at: new Date().toISOString() // Expire immediately after signing
             })
             .eq("token", token);
 
-        console.log("Signing session marked as completed");
+        console.log("Signing session marked as completed and token expired");
 
         // Create audit log entry for signature
         await supabaseAdmin
@@ -291,9 +296,38 @@ router.post("/sign", async (req: Request, res: Response) => {
 
         console.log("Signed PDF uploaded:", signedPath);
 
+        // Check if all signing sessions for this document are completed
+        const { data: allSessions, error: sessionsError } = await supabaseAdmin
+            .from("signing_sessions")
+            .select("status")
+            .eq("document_id", documentId);
+
+        if (sessionsError) {
+            console.error("Failed to fetch signing sessions:", sessionsError);
+        }
+
+        const totalSessions = allSessions?.length || 0;
+        const completedSessions = allSessions?.filter(s => s.status === "completed").length || 0;
+
+        console.log(`Signing progress: ${completedSessions}/${totalSessions} completed`);
+
+        // Only mark document as "signed" if ALL recipients have signed
+        let documentStatus = "pending";
+        if (totalSessions > 0 && completedSessions === totalSessions) {
+            documentStatus = "signed";
+            console.log("All recipients have signed! Marking document as signed.");
+        } else {
+            documentStatus = "partially_signed";
+            console.log(`Document partially signed (${completedSessions}/${totalSessions})`);
+        }
+
+        // Update document status
         await supabaseAdmin
             .from("documents")
-            .update({ status: "signed" })
+            .update({
+                status: documentStatus,
+                updated_at: new Date().toISOString()
+            })
             .eq("id", documentId);
 
         // Create audit log entry for document finalization
@@ -330,7 +364,7 @@ router.get("/session/:token/status", async (req: Request, res: Response) => {
 
         const { data: session, error } = await supabaseAdmin
             .from("signing_sessions")
-            .select("document_id, recipient_email, expires_at, created_at")
+            .select("document_id, recipient_email, expires_at, created_at, status")
             .eq("token", token)
             .single();
 
@@ -346,8 +380,9 @@ router.get("/session/:token/status", async (req: Request, res: Response) => {
             .single();
 
         res.json({
-            valid: !isExpired,
+            valid: !isExpired && session.status !== "completed",
             expired: isExpired,
+            sessionStatus: session.status,
             documentStatus: doc?.status,
             recipientEmail: session.recipient_email,
             expiresAt: session.expires_at,
