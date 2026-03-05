@@ -6,7 +6,8 @@ import nodemailer from "nodemailer";
 
 const createTransporter = () => {
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-        console.error("EMAIL_USER or EMAIL_PASS not set in environment variables");
+        console.error("⚠️ EMAIL_USER or EMAIL_PASS not set in environment variables");
+        console.error("Email functionality will not work!");
     }
 
     const transporter = nodemailer.createTransport({
@@ -17,15 +18,19 @@ const createTransporter = () => {
             user: process.env.EMAIL_USER,
             pass: process.env.EMAIL_PASS,
         },
+        tls: {
+            rejectUnauthorized: false
+        }
     });
 
-    console.log("Email configuration loaded:", {
+    console.log("📧 Email configuration loaded:", {
         host: "smtp.gmail.com",
         port: 587,
         user: process.env.EMAIL_USER
             ? `${process.env.EMAIL_USER.substring(0, 3)}***`
             : "NOT SET",
         passConfigured: !!process.env.EMAIL_PASS,
+        passLength: process.env.EMAIL_PASS?.length || 0
     });
 
     return transporter;
@@ -39,12 +44,19 @@ const transporter = createTransporter();
 
 (async () => {
     try {
+        console.log("🔍 Verifying email connection...");
         await transporter.verify();
-        console.log("Email server is ready to send messages");
+        console.log("✅ Email server is ready to send messages");
     } catch (error: any) {
-        console.error("Email transporter verification failed");
-        console.error(error.message);
-        console.error("Check EMAIL_USER and EMAIL_PASS in environment variables");
+        console.error("❌ Email transporter verification failed");
+        console.error("Error code:", error.code);
+        console.error("Error message:", error.message);
+        console.error("\n📝 Troubleshooting steps:");
+        console.error("1. Check EMAIL_USER is correct Gmail address");
+        console.error("2. Check EMAIL_PASS is a valid Gmail App Password (16 characters, no spaces)");
+        console.error("3. Enable 2-Step Verification in your Google Account");
+        console.error("4. Generate App Password at: https://myaccount.google.com/apppasswords");
+        console.error("5. Make sure 'Less secure app access' is NOT needed for App Passwords\n");
     }
 })();
 
@@ -58,7 +70,8 @@ export const sendEmail = async (
     text: string
 ) => {
     try {
-        console.log(`Sending email to: ${to}`);
+        console.log(`📤 Attempting to send email to: ${to}`);
+        console.log(`📧 Subject: ${subject}`);
 
         // Extract signing link from last line
         const signLink = text.split("\n").pop();
@@ -89,7 +102,8 @@ export const sendEmail = async (
                         padding:14px 30px;
                         text-decoration:none;
                         border-radius:8px;
-                        font-weight:600;">
+                        font-weight:600;
+                        display:inline-block;">
                  Sign Document
               </a>
             </div>
@@ -98,6 +112,13 @@ export const sendEmail = async (
               This link will expire in 7 days.
               If you did not expect this email, you can ignore it safely.
             </p>
+
+            <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;">
+
+            <p style="font-size:12px;color:#9ca3af;">
+              Or copy and paste this link:<br>
+              <a href="${signLink}" style="color:#4F46E5;word-break:break-all;">${signLink}</a>
+            </p>
           </div>
         </div>
       `,
@@ -105,17 +126,23 @@ export const sendEmail = async (
 
         const info = await transporter.sendMail(mailOptions);
 
-        console.log("Email sent successfully");
-        console.log("Message ID:", info.messageId);
-        console.log("Response:", info.response);
+        console.log("✅ Email sent successfully");
+        console.log("📬 Message ID:", info.messageId);
+        console.log("📨 Response:", info.response);
 
         return info;
     } catch (error: any) {
-        console.error("Email sending failed");
-        console.error("Recipient:", to);
-        console.error("Error:", error.message);
+        console.error("❌ Email sending failed");
+        console.error("📧 Recipient:", to);
+        console.error("🔴 Error code:", error.code);
+        console.error("🔴 Error message:", error.message);
 
         if (error.code === "EAUTH") {
+            console.error("\n⚠️ Authentication Error - Your Gmail credentials are incorrect");
+            console.error("Please check:");
+            console.error("1. EMAIL_USER is your full Gmail address");
+            console.error("2. EMAIL_PASS is a 16-character App Password (not your Gmail password)");
+            console.error("3. Generate new App Password at: https://myaccount.google.com/apppasswords\n");
             throw new Error(
                 "Email authentication failed. Check EMAIL_USER and EMAIL_PASS credentials."
             );
